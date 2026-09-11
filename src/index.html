@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Quicktimer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;500;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg-body:#05050a;--bg-glass:rgba(18,18,30,.6);--border-glass:rgba(255,255,255,.08);--bg-card:rgba(255,255,255,.03);--accent-primary:#00e5ff;--accent-secondary:#ff2d95;--accent-tertiary:#c084fc;--text-primary:#f0f0f8;--text-muted:#8a8aa0;--input-bg:rgba(255,255,255,.05);--shadow-glow:0 0 40px rgba(0,229,255,.1);--chart-grid:rgba(255,255,255,.05);--radius-lg:32px;--radius-md:20px;--radius-sm:12px;--transition:.4s cubic-bezier(.4,0,.2,1);--mesh-1:#2a0a4a;--mesh-2:#0a2a4a;--mesh-3:#4a0a2a}
+[data-theme="light"]{--bg-body:#f0f2f5;--bg-glass:rgba(255,255,255,.7);--border-glass:rgba(0,0,0,.08);--bg-card:rgba(0,0,0,.02);--accent-primary:#0066ff;--accent-secondary:#d81b60;--accent-tertiary:#8b5cf6;--text-primary:#1a1a2e;--text-muted:#6c6c80;--input-bg:rgba(0,0,0,.03);--shadow-glow:0 10px 40px rgba(0,0,0,.05);--chart-grid:rgba(0,0,0,.05);--mesh-1:#ffcccc;--mesh-2:#ccddff;--mesh-3:#e6ccff}
+body{font-family:'Space Grotesk',-apple-system,sans-serif;background:var(--bg-body);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:2rem 1.5rem;color:var(--text-primary);line-height:1.5;overflow-x:hidden;transition:background .5s,color .5s}
+body::before{content:'';position:fixed;top:-10%;left:-10%;width:120%;height:120%;background:radial-gradient(circle at 20% 30%,var(--mesh-1),transparent 40%),radial-gradient(circle at 80% 20%,var(--mesh-2),transparent 40%),radial-gradient(circle at 50% 80%,var(--mesh-3),transparent 40%);filter:blur(80px);z-index:-1;opacity:.4;transition:opacity .5s}
+[data-theme="light"] body::before{opacity:.6}
+.app-header{width:100%;max-width:1200px;display:flex;justify-content:space-between;align-items:center;margin-bottom:2rem}
+.brand{font-weight:700;font-size:1.5rem;letter-spacing:-.5px;background:linear-gradient(135deg,var(--accent-primary),var(--accent-secondary));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.theme-toggle{background:var(--bg-glass);border:1px solid var(--border-glass);width:52px;height:28px;border-radius:50px;cursor:pointer;position:relative;transition:all var(--transition);backdrop-filter:blur(10px)}
+.theme-toggle::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;background:var(--accent-primary);border-radius:50%;transition:all var(--transition);box-shadow:0 0 10px var(--accent-primary)}
+[data-theme="light"] .theme-toggle::after{left:27px}
+.main-container{width:100%;max-width:1200px;display:grid;grid-template-columns:1.2fr 1fr;gap:1.5rem;align-items:stretch}
+@media (max-width:900px){.main-container{grid-template-columns:1fr}}
+.card{background:var(--bg-glass);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid var(--border-glass);border-radius:var(--radius-lg);padding:2rem;box-shadow:0 20px 60px rgba(0,0,0,.2),var(--shadow-glow);transition:all var(--transition)}
+.timer-card{display:flex;flex-direction:column;align-items:center;text-align:center}
+.toggle-row{width:100%;display:flex;justify-content:space-between;margin-bottom:1.5rem}
+.toggle-btn{background:var(--input-bg);border:1px solid var(--border-glass);color:var(--text-muted);padding:.4rem 1rem;border-radius:50px;cursor:pointer;font-size:.8rem;transition:.2s}
+.toggle-btn.active{border-color:var(--accent-tertiary);color:var(--accent-tertiary)}
+.timer-wrapper{position:relative;width:280px;height:280px;display:flex;align-items:center;justify-content:center;margin:.5rem 0 2rem 0}
+.progress-ring{position:absolute;top:0;left:0;width:100%;height:100%;z-index:0}
+.progress-ring-circle{transition:stroke-dashoffset .25s linear;stroke:var(--accent-primary);stroke-linecap:round;filter:drop-shadow(0 0 8px var(--accent-primary))}
+.timer{font-family:'JetBrains Mono',monospace;font-size:6.5rem;font-weight:300;letter-spacing:-2px;line-height:1;color:var(--text-primary);position:relative;z-index:1}
+.timer.flash{animation:pulse .6s ease}
+@keyframes pulse{0%{transform:scale(1)}50%{transform:scale(1.05);text-shadow:0 0 30px var(--accent-secondary);color:var(--accent-secondary)}100%{transform:scale(1)}}
+.controls{display:flex;gap:1rem;margin-bottom:1.5rem;justify-content:center}
+.controls button{background:var(--accent-primary);color:#fff;border:none;padding:.8rem 3rem;border-radius:50px;font-size:1.1rem;font-weight:600;cursor:pointer;transition:all .2s;box-shadow:0 4px 15px rgba(0,102,255,.3)}
+.controls button.secondary{background:transparent;border:1px solid var(--border-glass);color:var(--text-primary);padding:.8rem 2rem;box-shadow:none}
+.controls button:hover{transform:translateY(-2px)}
+.controls button.secondary:hover{background:var(--input-bg)}
+.mode-switch{display:flex;background:var(--input-bg);padding:4px;border-radius:50px;margin-bottom:1.5rem;border:1px solid var(--border-glass);width:100%;max-width:300px}
+.mode-switch button{flex:1;background:transparent;border:none;color:var(--text-muted);padding:.5rem 1.5rem;border-radius:50px;cursor:pointer;font-weight:500;transition:all var(--transition);font-size:.9rem}
+.mode-switch button.active{background:var(--accent-secondary);color:#fff;box-shadow:0 4px 10px rgba(216,27,96,.3)}
+.custom-timer{width:100%;display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-top:auto;padding-top:1rem}
+.custom-timer label{display:flex;flex-direction:column;align-items:center;gap:.3rem;font-size:.65rem;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted)}
+.custom-timer input{width:100%;padding:.3rem;background:var(--input-bg);border:1px solid var(--border-glass);border-radius:var(--radius-sm);color:var(--text-primary);font-size:1rem;text-align:center;font-family:'JetBrains Mono',monospace;transition:.2s}
+.custom-timer input:focus{outline:none;border-color:var(--accent-primary)}
+.task-input{grid-column:1/-1;width:100%;background:var(--input-bg);border:1px solid var(--border-glass);padding:.6rem 1rem;border-radius:var(--radius-sm);color:var(--text-primary);font-family:'Space Grotesk',sans-serif;font-size:.9rem;text-align:center;margin-bottom:.5rem}
+.task-input:focus{outline:none;border-color:var(--accent-primary)}
+.right-col{display:flex;flex-direction:column;gap:1.5rem}
+.stats-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-bottom:1rem}
+.stat-item{background:var(--bg-card);padding:1rem;border-radius:var(--radius-md);text-align:center;border:1px solid var(--border-glass)}
+.stat-value{font-size:2rem;font-weight:700;color:var(--accent-primary);font-family:'JetBrains Mono',monospace}
+.stat-label{font-size:.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-top:.2rem}
+.chart-filters{display:flex;gap:.5rem;justify-content:center;margin-bottom:1rem}
+.chart-filters button{background:var(--input-bg);border:1px solid var(--border-glass);color:var(--text-muted);padding:.3rem 1rem;border-radius:50px;font-size:.75rem;cursor:pointer;transition:.2s}
+.chart-filters button.active{background:var(--accent-primary);color:#fff;border-color:transparent}
+.chart-container{height:180px;position:relative;margin-bottom:1rem}
+.time-logged{border-top:1px solid var(--border-glass);padding-top:1rem}
+.time-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;text-align:center}
+.time-item .period{font-size:.7rem;color:var(--text-muted);text-transform:uppercase;margin-bottom:.3rem}
+.time-item .work-time{font-size:1.1rem;font-weight:600;color:var(--text-primary)}
+.time-item .break-time{font-size:.8rem;color:var(--text-muted);margin-top:.2rem}
+.backup-section{display:flex;flex-direction:column;gap:1rem}
+.backup-buttons{display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap}
+.backup-buttons button{background:var(--input-bg);border:1px solid var(--border-glass);color:var(--text-muted);padding:.5rem 1.5rem;border-radius:50px;cursor:pointer;font-size:.8rem;transition:.2s}
+.backup-buttons button:hover{color:var(--text-primary);border-color:var(--accent-tertiary)}
+.backup-status{text-align:center;font-size:.75rem;color:var(--text-muted)}
+h3{font-weight:600;font-size:1.1rem;margin-bottom:1rem;color:var(--text-primary)}
+</style>
+</head>
+<body data-theme="dark">
+<header class="app-header">
+<div class="brand">Quicktimer</div>
+<button class="theme-toggle" id="themeToggle" aria-label="Toggle theme"></button>
+</header>
+
+<div class="main-container">
+<div class="card timer-card">
+<div class="toggle-row">
+<button class="toggle-btn" id="voiceToggle">🔊 Voice: On</button>
+<button class="toggle-btn" id="desktopNotifToggle">🔔 Alerts: Off</button>
+</div>
+<div class="timer-wrapper">
+<svg class="progress-ring" width="280" height="280">
+<circle class="progress-ring-circle" stroke-width="4" fill="transparent" r="130" cx="140" cy="140" />
+</svg>
+<div class="timer" id="timer">25:00</div>
+</div>
+<div class="controls">
+<button id="startStop">Start</button>
+<button id="reset" class="secondary">Reset</button>
+</div>
+<div class="mode-switch">
+<button id="workMode" class="active">Focus</button>
+<button id="breakMode">Break</button>
+</div>
+<div class="custom-timer">
+<input type="text" class="task-input" id="taskInput" placeholder="What are you working on?" />
+<label>Work (min)<input type="number" id="workDuration" min="1" max="120" value="25" /></label>
+<label>Short Br<input type="number" id="shortBreak" min="1" max="60" value="5" /></label>
+<label>Long Br<input type="number" id="longBreak" min="1" max="60" value="15" /></label>
+<label>Long After<input type="number" id="longAfter" min="1" max="20" value="4" /></label>
+</div>
+</div>
+
+<div class="right-col">
+<div class="card">
+<h3>Productivity Stats</h3>
+<div class="stats-grid">
+<div class="stat-item"><div class="stat-value" id="todayCount">0</div><div class="stat-label">Today</div></div>
+<div class="stat-item"><div class="stat-value" id="weekCount">0</div><div class="stat-label">This Week</div></div>
+<div class="stat-item"><div class="stat-value" id="allTimeCount">0</div><div class="stat-label">All Time</div></div>
+</div>
+</div>
+
+<div class="card">
+<h3>Analytics</h3>
+<div class="chart-filters">
+<button data-range="week" class="active">This Week</button>
+<button data-range="lastWeek">Last Week</button>
+<button data-range="month">This Month</button>
+</div>
+<div class="chart-container"><canvas id="weekChart"></canvas></div>
+<div class="time-logged">
+<div class="time-grid">
+<div class="time-item"><div class="period">Today</div><div class="work-time" id="todayWork">0m</div><div class="break-time" id="todayBreak">0m br</div></div>
+<div class="time-item"><div class="period">This Week</div><div class="work-time" id="weekWork">0m</div><div class="break-time" id="weekBreak">0m br</div></div>
+<div class="time-item"><div class="period">All Time</div><div class="work-time" id="allWork">0m</div><div class="break-time" id="allBreak">0m br</div></div>
+</div>
+</div>
+</div>
+
+<div class="card">
+<h3>Data Management</h3>
+<div class="backup-section">
+<div class="backup-buttons">
+<button id="backupNow">Export Data</button>
+<button id="importBtn">Import Data</button>
+<input type="file" id="importFile" accept="application/json" style="display:none" />
+</div>
+<div class="backup-status" id="backupStatus">Storage: ~/.local/share/quicktimer/</div>
+</div>
+</div>
+</div>
+</div>
+
+<script>
+/* ============================================================
+   Quicktimer frontend — Tauri-integrated
+   ============================================================ */
+const T = window.__TAURI__;
+const invoke = T.core.invoke;
+const listen = T.event.listen;
+
+/* ---------- JSON store (sync in-memory, async to disk) ---------- */
+const Store = {
+  cache: {},
+  async load(key) {
+    try {
+      const v = await invoke('load_json', { key });
+      this.cache[key] = (v && v !== null) ? v : null;
+    } catch (e) { this.cache[key] = null; }
+    return this.cache[key];
+  },
+  get(key) { return this.cache[key]; },
+  set(key, value) {
+    this.cache[key] = value;
+    invoke('save_json', { key, value }).catch(() => {});
+  }
+};
+
+(async () => {
+  // Load persisted data first
+  await Store.load('history');
+  await Store.load('prefs');
+  await Store.load('backup_meta');
+  await Store.load('popup_state');
+  await Store.load('popup_log');
+
+  // ----- DOM -----
+  const timerEl = document.getElementById('timer');
+  const startStopBtn = document.getElementById('startStop');
+  const resetBtn = document.getElementById('reset');
+  const workModeBtn = document.getElementById('workMode');
+  const breakModeBtn = document.getElementById('breakMode');
+  const progressRing = document.querySelector('.progress-ring-circle');
+  const voiceToggleBtn = document.getElementById('voiceToggle');
+  const desktopNotifBtn = document.getElementById('desktopNotifToggle');
+  const themeToggleBtn = document.getElementById('themeToggle');
+  const chartCanvas = document.getElementById('weekChart');
+  const todayWorkEl = document.getElementById('todayWork');
+  const todayBreakEl = document.getElementById('todayBreak');
+  const weekWorkEl = document.getElementById('weekWork');
+  const weekBreakEl = document.getElementById('weekBreak');
+  const allWorkEl = document.getElementById('allWork');
+  const allBreakEl = document.getElementById('allBreak');
+  const todayCountEl = document.getElementById('todayCount');
+  const weekCountEl = document.getElementById('weekCount');
+  const allTimeCountEl = document.getElementById('allTimeCount');
+  const workDurationInput = document.getElementById('workDuration');
+  const shortBreakInput = document.getElementById('shortBreak');
+  const longBreakInput = document.getElementById('longBreak');
+  const longAfterInput = document.getElementById('longAfter');
+  const filterButtons = document.querySelectorAll('.chart-filters button');
+
+  let countdownInterval = null;
+  let timerEnd = null;
+  let secondsLeft = 25 * 60;
+  let isRunning = false;
+  let isWorkMode = true;
+  let isVoiceEnabled = true;
+  let sessionPomodoros = 0;
+  let workDurationSec = 25 * 60;
+  let shortBreakSec = 5 * 60;
+  let longBreakSec = 15 * 60;
+  let longAfterCount = 4;
+  let history = Store.get('history') || [];
+  let prefs = Store.get('prefs') || {};
+  let popupState = Store.get('popup_state') || null;
+  let popupLog = Store.get('popup_log') || [];
+
+  // ----- Helpers -----
+  const getDateString = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const genId = () => (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36));
+  const formatDuration = s => { const h = Math.floor(s/3600), m = Math.floor((s%3600)/60); return h>0 ? `${h}h ${m}m` : `${m}m`; };
+  const getWeekStart = () => { const n = new Date(); const d = n.getDay(); const diff = n.getDate() - d + (d===0?-6:1); const m = new Date(n); m.setDate(diff); m.setHours(0,0,0,0); return m; };
+  const getWeekDates = (base) => { const n = base || new Date(); const d = n.getDay(); const off = d===0?6:d-1; const mon = new Date(n); mon.setDate(n.getDate()-off); mon.setHours(0,0,0,0); const arr=[]; for(let i=0;i<7;i++){const x=new Date(mon);x.setDate(mon.getDate()+i);arr.push(x);} return arr; };
+  const getLastWeekDates = () => { const n = new Date(); const x = new Date(n); x.setDate(n.getDate()-7); return getWeekDates(x); };
+  const getMonthDates = () => { const n = new Date(); const start = new Date(n.getFullYear(),n.getMonth(),1); const end = new Date(n.getFullYear(),n.getMonth()+1,0); const arr=[]; for(let d=new Date(start); d<=end; d.setDate(d.getDate()+1)) arr.push(new Date(d)); return arr; };
+
+  function saveHistory() { Store.set('history', history); }
+  function savePrefs() { Store.set('prefs', prefs); }
+  function pruneHistory() { const cut = Date.now() - 90*24*60*60*1000; history = history.filter(s => new Date(s.endedAt).getTime() >= cut); }
+
+  function addSessionToHistory(type, duration, startedAt, endedAt) {
+    history.push({ id: genId(), startedAt, endedAt, type, duration, task: document.getElementById('taskInput').value || 'General' });
+    pruneHistory();
+    saveHistory();
+  }
+  function getCountForRange(start) { return history.filter(s => new Date(s.endedAt) >= start && s.type === 'work').length; }
+  function getTodayCount() { const t = new Date(); t.setHours(0,0,0,0); return getCountForRange(t); }
+  function getWeekCount() { return getCountForRange(getWeekStart()); }
+  function getTimeTotals(type, start) { return history.filter(s => s.type === type && new Date(s.endedAt) >= start).reduce((sum,s)=>sum+s.duration,0); }
+
+  function updateTimeLogs() {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekStart = getWeekStart();
+    const allStart = new Date(0);
+    todayWorkEl.textContent = formatDuration(getTimeTotals('work', todayStart));
+    todayBreakEl.textContent = formatDuration(getTimeTotals('break', todayStart)) + ' br';
+    weekWorkEl.textContent = formatDuration(getTimeTotals('work', weekStart));
+    weekBreakEl.textContent = formatDuration(getTimeTotals('break', weekStart)) + ' br';
+    allWorkEl.textContent = formatDuration(getTimeTotals('work', allStart));
+    allBreakEl.textContent = formatDuration(getTimeTotals('break', allStart)) + ' br';
+  }
+
+  function getBreakDuration() {
+    return (sessionPomodoros > 0 && sessionPomodoros % longAfterCount === 0) ? longBreakSec : shortBreakSec;
+  }
+
+  // ----- Sound & voice -----
+  let audioCtx = null;
+  function ensureAudioContext() { try { if (!audioCtx) { const C = window.AudioContext || window.webkitAudioContext; if (C) audioCtx = new C(); } if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume(); } catch(e){} }
+  function playAlarm() {
+    if (!audioCtx) ensureAudioContext(); if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+    [0,0.35,0.7].forEach(off => {
+      const osc = audioCtx.createOscillator(); const g = audioCtx.createGain();
+      osc.type='sine'; osc.frequency.value=880;
+      g.gain.setValueAtTime(0.0001, now+off);
+      g.gain.exponentialRampToValueAtTime(0.35, now+off+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, now+off+0.28);
+      osc.connect(g).connect(audioCtx.destination);
+      osc.start(now+off); osc.stop(now+off+0.3);
+    });
+  }
+  let keepAlive = null;
+  function speak(text) {
+    if (!isVoiceEnabled || !('speechSynthesis' in window)) return;
+    speechSynthesis.cancel(); clearInterval(keepAlive);
+    const u = new SpeechSynthesisUtterance(text); u.lang='en-US';
+    u.onend = () => clearInterval(keepAlive);
+    speechSynthesis.speak(u);
+    keepAlive = setInterval(() => { if (!speechSynthesis.speaking) { clearInterval(keepAlive); return; } speechSynthesis.pause(); speechSynthesis.resume(); }, 4000);
+  }
+
+  // ----- Progress ring -----
+  const radius = progressRing.r.baseVal.value;
+  const circ = radius * 2 * Math.PI;
+  progressRing.style.strokeDasharray = `${circ} ${circ}`;
+  progressRing.style.strokeDashoffset = 0;
+  function setProgress(p) { progressRing.style.strokeDashoffset = (p/100)*circ; }
+
+  // ----- Timer -----
+  function updateDisplay(sec) {
+    const m = Math.floor(sec/60), s = sec % 60;
+    timerEl.textContent = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    const total = isWorkMode ? workDurationSec : getBreakDuration();
+    setProgress(Math.min(100, (1 - sec/total)*100));
+  }
+  function updateTimerDisplay() {
+    if (isRunning && timerEnd) {
+      const rem = timerEnd - Date.now();
+      if (rem <= 0) { stopTicking(); isRunning = false; timerEnd = null; secondsLeft = 0; updateDisplay(0); handleTimerEnd(); return; }
+      secondsLeft = Math.ceil(rem/1000); updateDisplay(secondsLeft);
+    } else updateDisplay(secondsLeft);
+  }
+  function startTicking() { clearInterval(countdownInterval); countdownInterval = setInterval(updateTimerDisplay, 250); }
+  function stopTicking() { clearInterval(countdownInterval); }
+
+  function handleTimerEnd() {
+    const wasWork = isWorkMode;
+    const dur = wasWork ? workDurationSec : getBreakDuration();
+    const startedAt = new Date(Date.now() - dur*1000).toISOString();
+    const endedAt = new Date().toISOString();
+    addSessionToHistory(wasWork ? 'work' : 'break', dur, startedAt, endedAt);
+    if (wasWork) { sessionPomodoros += 1; updateStats(); }
+    updateTimeLogs();
+    timerEl.classList.add('flash'); setTimeout(()=>timerEl.classList.remove('flash'),600);
+    switchModeSilently();
+    if (!isWorkMode && window._qrOnBreakStart) {
+      const bs = getBreakDuration(); window._qrOnBreakStart(bs, bs === longBreakSec);
+    }
+    const msg = wasWork ? "Time for a break!" : "Let's get back to work!";
+    playAlarm(); speak(msg);
+    startTimer();
+  }
+
+  function startTimer() {
+    stopTicking(); ensureAudioContext();
+    if (!timerEnd) {
+      const total = (secondsLeft > 0 && secondsLeft <= (isWorkMode ? workDurationSec : getBreakDuration()))
+        ? secondsLeft : (isWorkMode ? workDurationSec : getBreakDuration());
+      secondsLeft = total; timerEnd = Date.now() + total*1000;
+    }
+    isRunning = true; startStopBtn.textContent = 'Pause';
+    if (isVoiceEnabled) speak(isWorkMode ? "Starting work" : "Starting break");
+    startTicking(); updateTimerDisplay();
+  }
+  function stopTimer() {
+    stopTicking();
+    if (timerEnd) { secondsLeft = Math.max(0, Math.ceil((timerEnd - Date.now())/1000)); timerEnd = null; }
+    isRunning = false; startStopBtn.textContent = 'Start';
+    updateTimerDisplay(); if (isVoiceEnabled) speak("Paused");
+  }
+  function resetTimer() {
+    stopTicking(); isRunning = false; timerEnd = null; sessionPomodoros = 0;
+    secondsLeft = isWorkMode ? workDurationSec : getBreakDuration();
+    startStopBtn.textContent = 'Start'; updateTimerDisplay();
+    if (isVoiceEnabled) speak("Reset");
+  }
+  function switchModeSilently() {
+    isWorkMode = !isWorkMode;
+    workModeBtn.classList.toggle('active', isWorkMode);
+    breakModeBtn.classList.toggle('active', !isWorkMode);
+    secondsLeft = isWorkMode ? workDurationSec : getBreakDuration();
+    if (isRunning) timerEnd = Date.now() + secondsLeft*1000;
+    updateTimerDisplay();
+  }
+  function toggleMode() {
+    if (isRunning) stopTimer();
+    switchModeSilently();
+    if (!isWorkMode && window._qrOnBreakStart) {
+      const bs = getBreakDuration(); window._qrOnBreakStart(bs, bs === longBreakSec);
+    }
+  }
+
+  // ----- Silent pause/resume hooks for popup -----
+  window._ffPauseBreak = function() {
+    if (isWorkMode) return;
+    if (timerEnd) { secondsLeft = Math.max(0, Math.ceil((timerEnd - Date.now())/1000)); timerEnd = null; }
+    stopTicking(); isRunning = false; startStopBtn.textContent = 'Start'; updateTimerDisplay();
+  };
+  window._ffResumeBreak = function() {
+    if (isWorkMode) return;
+    if (secondsLeft <= 0) secondsLeft = getBreakDuration();
+    timerEnd = Date.now() + secondsLeft*1000;
+    isRunning = true; startStopBtn.textContent = 'Pause';
+    startTicking(); updateTimerDisplay();
+  };
+
+  // ----- Stats & chart -----
+  let weekChart;
+  const cssVar = n => getComputedStyle(document.body).getPropertyValue(n).trim();
+  function updateChartTheme() {
+    if (!weekChart) return;
+    weekChart.options.scales.x.ticks.color = cssVar('--text-muted');
+    weekChart.options.scales.y.ticks.color = cssVar('--text-muted');
+    weekChart.options.scales.x.grid.color = cssVar('--chart-grid');
+    weekChart.options.scales.y.grid.color = cssVar('--chart-grid');
+    weekChart.data.datasets[0].backgroundColor = cssVar('--bg-card');
+    weekChart.data.datasets[0].borderColor = cssVar('--accent-primary');
+    weekChart.update();
+  }
+  function getDataForRange(range) {
+    let dates = [], fmt = 'short';
+    if (range === 'week') dates = getWeekDates();
+    else if (range === 'lastWeek') dates = getLastWeekDates();
+    else if (range === 'month') { dates = getMonthDates(); fmt = 'numeric'; }
+    const labels = dates.map(d => fmt === 'short' ? d.toLocaleDateString('en-US',{weekday:'short'}) : d.toLocaleDateString('en-US',{day:'numeric'}));
+    const data = dates.map(d => history.filter(h => getDateString(new Date(h.endedAt)) === getDateString(d) && h.type === 'work').length);
+    return { labels, data };
+  }
+  let currentRange = 'week';
+  function renderChart(range) {
+    const { labels, data } = getDataForRange(range);
+    if (weekChart) { weekChart.data.labels = labels; weekChart.data.datasets[0].data = data; weekChart.update(); }
+    else {
+      weekChart = new Chart(chartCanvas, {
+        type: 'bar',
+        data: { labels, datasets: [{ label:'Pomodoros', data, backgroundColor: cssVar('--bg-card'), borderColor: cssVar('--accent-primary'), borderWidth: 1.5, borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, ticks:{stepSize:1, color: cssVar('--text-muted'), font:{size:9}}, grid:{color: cssVar('--chart-grid')} },
+                    x: { ticks:{color: cssVar('--text-muted'), font:{size:9}}, grid:{display:false} } } }
+      });
+    }
+  }
+  function updateStats() {
+    todayCountEl.textContent = getTodayCount();
+    weekCountEl.textContent = getWeekCount();
+    allTimeCountEl.textContent = history.filter(s => s.type === 'work').length;
+    renderChart(currentRange);
+  }
+
+  // ----- Prefs & theme -----
+  function applyTheme(t) { document.body.setAttribute('data-theme', t); updateChartTheme(); }
+  function loadPrefs() {
+    isVoiceEnabled = prefs.voice ?? true;
+    workDurationSec = (prefs.workDuration || 25)*60;
+    shortBreakSec = (prefs.shortBreak || 5)*60;
+    longBreakSec = (prefs.longBreak || 15)*60;
+    longAfterCount = prefs.longAfter || 4;
+    applyTheme(prefs.theme || 'dark');
+    workDurationInput.value = Math.round(workDurationSec/60);
+    shortBreakInput.value = Math.round(shortBreakSec/60);
+    longBreakInput.value = Math.round(longBreakSec/60);
+    longAfterInput.value = longAfterCount;
+    voiceToggleBtn.textContent = `🔊 Voice: ${isVoiceEnabled?'On':'Off'}`;
+    voiceToggleBtn.classList.toggle('active', isVoiceEnabled);
+  }
+  function updateCustomDurations() {
+    const w = parseInt(workDurationInput.value); if (!isNaN(w) && w>0) { workDurationSec = w*60; prefs.workDuration = w; }
+    const s = parseInt(shortBreakInput.value); if (!isNaN(s) && s>0) { shortBreakSec = s*60; prefs.shortBreak = s; }
+    const l = parseInt(longBreakInput.value); if (!isNaN(l) && l>0) { longBreakSec = l*60; prefs.longBreak = l; }
+    const a = parseInt(longAfterInput.value); if (!isNaN(a) && a>0) { longAfterCount = a; prefs.longAfter = a; }
+    savePrefs();
+    if (!isRunning) { secondsLeft = isWorkMode ? workDurationSec : getBreakDuration(); updateTimerDisplay(); }
+  }
+
+  // ----- Popup module (hidden algorithm) -----
+  const TITLES = ['Quick Reset','Notes'];
+  const BODIES = [
+    'Take a short pause. Return when done.',
+    'Quick reset. Stay on schedule.',
+    'Routine check. Back after.',
+    '5-minute pause. No delay.',
+    'Break activity. Resume after.'
+  ];
+
+  function todayKey() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+  function freshPopupState() {
+    // Values intentionally opaque.
+    const v = 6 + Math.floor(Math.random() * 6);
+    return { date: todayKey(), count: 0, cap: v, skipMemory: 0, lastShownAt: null };
+  }
+  function ensurePopupState() {
+    if (!popupState || popupState.date !== todayKey()) { popupState = freshPopupState(); Store.set('popup_state', popupState); }
+  }
+  function savePopupState() { Store.set('popup_state', popupState); }
+  function logPopup(entry) {
+    popupLog.push({ ...entry, at: new Date().toISOString() });
+    if (popupLog.length > 300) popupLog.splice(0, popupLog.length - 300);
+    Store.set('popup_log', popupLog);
+  }
+  function computePopupDuration(breakSec) {
+    // Opaque numeric logic — do not annotate.
+    let b;
+    if (breakSec && breakSec > 0) { const f = 0.8 + Math.random() * 0.4; b = breakSec * f; }
+    else { b = 270 + Math.random() * 180; }
+    if (popupState.skipMemory > 0) b *= (1 + 0.08 * popupState.skipMemory);
+    b = Math.max(270, Math.min(450, b));
+    b = Math.max(300, Math.min(540, b));
+    return Math.round(b);
+  }
+  function shouldTriggerPopup() {
+    if (popupState.count >= popupState.cap) return false;
+    let c = 0.42;
+    if (popupState.skipMemory > 0) c *= Math.pow(1.15, popupState.skipMemory);
+    c = Math.min(0.92, c);
+    return Math.random() < c;
+  }
+
+  let popupActive = false;
+  let pendingResume = null;
+
+  async function showPopup(durationSec, isTest) {
+    if (popupActive) return;
+    popupActive = true;
+    if (typeof window._ffPauseBreak === 'function') window._ffPauseBreak();
+    if (!isTest) {
+      ensurePopupState();
+      popupState.count += 1;
+      popupState.lastShownAt = new Date().toISOString();
+      popupState.skipMemory = 0;
+      savePopupState();
+    }
+    logPopup({ type: 'shown', duration: durationSec, test: !!isTest });
+    try { await invoke('show_popup', { duration: durationSec }); } catch (e) { popupActive = false; }
+  }
+
+  listen('popup-closed', () => {
+    popupActive = false;
+    logPopup({ type: 'closed' });
+    if (pendingResume) clearTimeout(pendingResume);
+    pendingResume = setTimeout(() => {
+      pendingResume = null;
+      if (typeof window._ffResumeBreak === 'function') window._ffResumeBreak();
+    }, 60 * 1000);
+  });
+
+  // Break-start hook (real popup)
+  window._qrOnBreakStart = function(breakSec, isLong) {
+    ensurePopupState();
+    const delayMs = (30 + Math.random() * 90) * 1000;
+    setTimeout(() => {
+      if (popupActive) return;
+      if (!shouldTriggerPopup()) return;
+      const dur = computePopupDuration(breakSec);
+      showPopup(dur, false);
+    }, delayMs);
+  };
+
+  // Test popup listener (from tray or hotkey)
+  listen('test-popup', () => {
+    ensurePopupState();
+    const dur = Math.min(30, computePopupDuration(15 * 60));
+    showPopup(dur, true);
+  });
+
+  // ----- Wire up UI -----
+  startStopBtn.addEventListener('click', () => { isRunning ? stopTimer() : startTimer(); });
+  resetBtn.addEventListener('click', resetTimer);
+  workModeBtn.addEventListener('click', () => { if (!isWorkMode) toggleMode(); });
+  breakModeBtn.addEventListener('click', () => { if (isWorkMode) toggleMode(); });
+  themeToggleBtn.addEventListener('click', () => {
+    const n = document.body.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    applyTheme(n); prefs.theme = n; savePrefs();
+  });
+  voiceToggleBtn.addEventListener('click', () => {
+    isVoiceEnabled = !isVoiceEnabled; prefs.voice = isVoiceEnabled; savePrefs();
+    voiceToggleBtn.textContent = `🔊 Voice: ${isVoiceEnabled?'On':'Off'}`;
+    voiceToggleBtn.classList.toggle('active', isVoiceEnabled);
+  });
+  document.getElementById('backupNow').addEventListener('click', () => {
+    const data = JSON.stringify({ history, prefs, popupLog }, null, 2);
+    const blob = new Blob([data], {type:'application/json'});
+    const a = document.createElement('a');
+    a.download = `quicktimer_backup_${new Date().toISOString().slice(0,19).replace(/[:.]/g,'-')}.json`;
+    a.href = URL.createObjectURL(blob); a.click();
+  });
+  filterButtons.forEach(b => b.addEventListener('click', () => {
+    filterButtons.forEach(x => x.classList.remove('active')); b.classList.add('active');
+    currentRange = b.dataset.range; renderChart(currentRange);
+  }));
+  [workDurationInput, shortBreakInput, longBreakInput, longAfterInput].forEach(i => i.addEventListener('change', updateCustomDurations));
+
+  // ----- Init -----
+  loadPrefs();
+  ensurePopupState();
+  secondsLeft = workDurationSec;
+  updateTimerDisplay();
+  updateStats();
+  updateTimeLogs();
+})();
+</script>
+</body>
+</html>

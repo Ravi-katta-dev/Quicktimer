@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Quick Reset</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;500&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;padding:0;height:100%;overflow:hidden;user-select:none;-webkit-user-select:none}
+body{
+  background:rgba(18,18,30,.94);
+  font-family:'Space Grotesk',sans-serif;
+  color:#f0f0f8;
+  display:flex;align-items:center;justify-content:center;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.08);
+  backdrop-filter:blur(20px);
+}
+.box{text-align:center;padding:1.6rem 1.4rem;width:100%}
+.title{font-size:1.1rem;font-weight:600;color:#00e5ff;margin-bottom:.5rem;letter-spacing:.3px}
+.body{font-size:.82rem;color:#8a8aa0;margin-bottom:1rem;line-height:1.4}
+.timer{font-family:'JetBrains Mono',monospace;font-size:2.2rem;font-weight:300;letter-spacing:-1px;margin-bottom:1rem;color:#f0f0f8}
+button{background:#00e5ff;color:#fff;border:none;padding:.5rem 1.8rem;border-radius:50px;font-family:inherit;font-size:.85rem;font-weight:500;cursor:pointer;transition:.15s}
+button:hover{transform:translateY(-1px)}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="title" id="title">Quick Reset</div>
+  <div class="body" id="body">Take a short pause. Return when done.</div>
+  <div class="timer" id="timer">05:00</div>
+  <button id="dismissBtn">Dismiss</button>
+</div>
+<script>
+const T = window.__TAURI__;
+const params = new URLSearchParams(location.search);
+let remaining = Math.max(1, parseInt(params.get('d') || '300'));
+const titles = ['Quick Reset','Notes'];
+const bodies = [
+  'Take a short pause. Return when done.',
+  'Quick reset. Stay on schedule.',
+  'Routine check. Back after.',
+  '5-minute pause. No delay.',
+  'Break activity. Resume after.'
+];
+document.getElementById('title').textContent = titles[Math.floor(Math.random()*titles.length)];
+document.getElementById('body').textContent = bodies[Math.floor(Math.random()*bodies.length)];
+
+const timerEl = document.getElementById('timer');
+function fmt(s){const m=Math.floor(s/60),x=s%60;return String(m).padStart(2,'0')+':'+String(x).padStart(2,'0');}
+timerEl.textContent = fmt(remaining);
+
+let closed = false;
+async function closePopup() {
+  if (closed) return; closed = true;
+  try { await T.core.invoke('popup_closed'); } catch(e){}
+  try { await T.window.getCurrentWindow().close(); } catch(e){}
+}
+document.getElementById('dismissBtn').addEventListener('click', closePopup);
+
+const iv = setInterval(() => {
+  remaining--;
+  if (remaining <= 0) { clearInterval(iv); closePopup(); return; }
+  timerEl.textContent = fmt(remaining);
+}, 1000);
+
+// also close on ESC
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closePopup(); });
+</script>
+</body>
+</html>
