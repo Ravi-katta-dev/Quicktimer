@@ -24,7 +24,7 @@ body::before{content:'';position:fixed;top:-10%;left:-10%;width:120%;height:120%
 @media (max-width:900px){.main-container{grid-template-columns:1fr}}
 .card{background:var(--bg-glass);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid var(--border-glass);border-radius:var(--radius-lg);padding:2rem;box-shadow:0 20px 60px rgba(0,0,0,.2),var(--shadow-glow);transition:all var(--transition)}
 .timer-card{display:flex;flex-direction:column;align-items:center;text-align:center}
-.toggle-row{width:100%;display:flex;justify-content:space-between;margin-bottom:1.5rem}
+.toggle-row{width:100%;display:flex;justify-content:space-between;gap:.6rem;flex-wrap:wrap;margin-bottom:1.5rem}
 .toggle-btn{background:var(--input-bg);border:1px solid var(--border-glass);color:var(--text-muted);padding:.4rem 1rem;border-radius:50px;cursor:pointer;font-size:.8rem;transition:.2s}
 .toggle-btn.active{border-color:var(--accent-tertiary);color:var(--accent-tertiary)}
 .timer-wrapper{position:relative;width:280px;height:280px;display:flex;align-items:center;justify-content:center;margin:.5rem 0 2rem 0}
@@ -66,6 +66,10 @@ body::before{content:'';position:fixed;top:-10%;left:-10%;width:120%;height:120%
 .backup-buttons button{background:var(--input-bg);border:1px solid var(--border-glass);color:var(--text-muted);padding:.5rem 1.5rem;border-radius:50px;cursor:pointer;font-size:.8rem;transition:.2s}
 .backup-buttons button:hover{color:var(--text-primary);border-color:var(--accent-tertiary)}
 .backup-status{text-align:center;font-size:.75rem;color:var(--text-muted)}
+.notes-list{list-style:none;display:flex;flex-direction:column;gap:.5rem;max-height:220px;overflow:auto;padding-right:.2rem}
+.notes-list li{background:var(--bg-card);border:1px solid var(--border-glass);border-radius:var(--radius-sm);padding:.55rem .7rem;font-size:.78rem}
+.notes-empty{font-size:.78rem;color:var(--text-muted)}
+.notes-time{color:var(--text-muted);margin-left:.35rem}
 h3{font-weight:600;font-size:1.1rem;margin-bottom:1rem;color:var(--text-primary)}
 </style>
 </head>
@@ -80,6 +84,7 @@ h3{font-weight:600;font-size:1.1rem;margin-bottom:1rem;color:var(--text-primary)
 <div class="toggle-row">
 <button class="toggle-btn" id="voiceToggle">🔊 Voice: On</button>
 <button class="toggle-btn" id="desktopNotifToggle">🔔 Alerts: Off</button>
+<button class="toggle-btn active" id="notesToggle">📝 Notes: On</button>
 </div>
 <div class="timer-wrapper">
 <svg class="progress-ring" width="280" height="280">
@@ -129,6 +134,11 @@ h3{font-weight:600;font-size:1.1rem;margin-bottom:1rem;color:var(--text-primary)
 <div class="time-item"><div class="period">All Time</div><div class="work-time" id="allWork">0m</div><div class="break-time" id="allBreak">0m br</div></div>
 </div>
 </div>
+</div>
+
+<div class="card" id="notesCard">
+<h3>Notes</h3>
+<ul class="notes-list" id="notesList"></ul>
 </div>
 
 <div class="card">
@@ -203,6 +213,9 @@ const Store = {
   const longBreakInput = document.getElementById('longBreak');
   const longAfterInput = document.getElementById('longAfter');
   const filterButtons = document.querySelectorAll('.chart-filters button');
+  const notesToggleBtn = document.getElementById('notesToggle');
+  const notesCard = document.getElementById('notesCard');
+  const notesList = document.getElementById('notesList');
 
   let countdownInterval = null;
   let timerEnd = null;
@@ -218,7 +231,8 @@ const Store = {
   let history = Store.get('history') || [];
   let prefs = Store.get('prefs') || {};
   let popupState = Store.get('popup_state') || null;
-  let popupLog = Store.get('popup_log') || [];
+  let popupLog = Array.isArray(Store.get('popup_log')) ? Store.get('popup_log') : [];
+  let isNotesVisible = true;
 
   // ----- Helpers -----
   const getDateString = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -232,6 +246,30 @@ const Store = {
   function saveHistory() { Store.set('history', history); }
   function savePrefs() { Store.set('prefs', prefs); }
   function pruneHistory() { const cut = Date.now() - 90*24*60*60*1000; history = history.filter(s => new Date(s.endedAt).getTime() >= cut); }
+  function updateNotesToggleUi() {
+    notesToggleBtn.textContent = `📝 Notes: ${isNotesVisible ? 'On' : 'Off'}`;
+    notesToggleBtn.classList.toggle('active', isNotesVisible);
+  }
+  function renderNotes() {
+    if (!isNotesVisible) {
+      notesCard.style.display = 'none';
+      return;
+    }
+    notesCard.style.display = '';
+    const rows = popupLog.slice(-40).reverse();
+    if (!rows.length) {
+      notesList.innerHTML = '<li class="notes-empty">No popup activity yet.</li>';
+      return;
+    }
+    notesList.innerHTML = rows.map(row => {
+      const when = new Date(row.at || Date.now()).toLocaleString();
+      const status = row.type === 'shown' ? 'Shown' : 'Hidden';
+      const suffix = row.type === 'shown'
+        ? ` · ${Math.round((row.duration || 0) / 60)}m${row.test ? ' · test' : ''}`
+        : '';
+      return `<li><strong>${status}</strong>${suffix}<span class="notes-time">${when}</span></li>`;
+    }).join('');
+  }
 
   function addSessionToHistory(type, duration, startedAt, endedAt) {
     history.push({ id: genId(), startedAt, endedAt, type, duration, task: document.getElementById('taskInput').value || 'General' });
@@ -428,6 +466,7 @@ const Store = {
   function applyTheme(t) { document.body.setAttribute('data-theme', t); updateChartTheme(); }
   function loadPrefs() {
     isVoiceEnabled = prefs.voice ?? true;
+    isNotesVisible = prefs.notesVisible ?? true;
     workDurationSec = (prefs.workDuration || 25)*60;
     shortBreakSec = (prefs.shortBreak || 5)*60;
     longBreakSec = (prefs.longBreak || 15)*60;
@@ -439,6 +478,8 @@ const Store = {
     longAfterInput.value = longAfterCount;
     voiceToggleBtn.textContent = `🔊 Voice: ${isVoiceEnabled?'On':'Off'}`;
     voiceToggleBtn.classList.toggle('active', isVoiceEnabled);
+    updateNotesToggleUi();
+    renderNotes();
   }
   function updateCustomDurations() {
     const w = parseInt(workDurationInput.value); if (!isNaN(w) && w>0) { workDurationSec = w*60; prefs.workDuration = w; }
@@ -473,6 +514,7 @@ const Store = {
     popupLog.push({ ...entry, at: new Date().toISOString() });
     if (popupLog.length > 300) popupLog.splice(0, popupLog.length - 300);
     Store.set('popup_log', popupLog);
+    renderNotes();
   }
   function computePopupDuration(breakSec) {
     // Opaque numeric logic — do not annotate.
@@ -553,6 +595,13 @@ const Store = {
     voiceToggleBtn.textContent = `🔊 Voice: ${isVoiceEnabled?'On':'Off'}`;
     voiceToggleBtn.classList.toggle('active', isVoiceEnabled);
   });
+  notesToggleBtn.addEventListener('click', () => {
+    isNotesVisible = !isNotesVisible;
+    prefs.notesVisible = isNotesVisible;
+    savePrefs();
+    updateNotesToggleUi();
+    renderNotes();
+  });
   document.getElementById('backupNow').addEventListener('click', () => {
     const data = JSON.stringify({ history, prefs, popupLog }, null, 2);
     const blob = new Blob([data], {type:'application/json'});
@@ -573,6 +622,7 @@ const Store = {
   updateTimerDisplay();
   updateStats();
   updateTimeLogs();
+  renderNotes();
 })();
 </script>
 </body>
