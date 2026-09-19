@@ -178,22 +178,6 @@ const Store = {
   await Store.load('popup_state');
   await Store.load('popup_log');
 
-  // ===== Audio unlock on first user interaction =====
-  const unlockAudio = () => {
-    try {
-      ensureAudioContext();
-      if (audioCtx && audioCtx.state === 'suspended') {
-        audioCtx.resume();
-      }
-    } catch (e) {}
-    document.removeEventListener('click', unlockAudio);
-    document.removeEventListener('keydown', unlockAudio);
-    document.removeEventListener('touchstart', unlockAudio);
-  };
-  document.addEventListener('click', unlockAudio);
-  document.addEventListener('keydown', unlockAudio);
-  document.addEventListener('touchstart', unlockAudio);
-
   // ----- DOM -----
   const timerEl = document.getElementById('timer');
   const startStopBtn = document.getElementById('startStop');
@@ -236,7 +220,96 @@ const Store = {
   let popupState = Store.get('popup_state') || null;
   let popupLog = Store.get('popup_log') || [];
 
-  // ===== Desktop notifications (top-level) =====
+  // ===== Audio (robust) =====
+  let audioCtx = null;
+  let audioReady = false;
+
+  async function initAudio() {
+    if (audioReady && audioCtx && audioCtx.state === 'running') return true;
+    try {
+      if (!audioCtx) {
+        const C = window.AudioContext || window.webkitAudioContext;
+        if (!C) { console.warn('[audio] AudioContext not available'); return false; }
+        audioCtx = new C();
+      }
+      if (audioCtx.state === 'suspended') {
+        await audioCtx.resume();
+      }
+      try {
+        const buf = audioCtx.createBuffer(1, 1, 22050);
+        const src = audioCtx.createBufferSource();
+        src.buffer = buf;
+        src.connect(audioCtx.destination);
+        src.start(0);
+      } catch (e) {}
+      audioReady = (audioCtx.state === 'running');
+      console.log('[audio] state:', audioCtx.state, 'sampleRate:', audioCtx.sampleRate);
+      return audioReady;
+    } catch (e) {
+      console.error('[audio] init failed:', e);
+      return false;
+    }
+  }
+
+  async function playAlarm() {
+    const ok = await initAudio();
+    if (!ok) { console.warn('[audio] context not running, cannot play'); return; }
+    try {
+      const now = audioCtx.currentTime;
+      [0, 0.35, 0.7].forEach(off => {
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = 880;
+        g.gain.setValueAtTime(0.0001, now + off);
+        g.gain.exponentialRampToValueAtTime(0.35, now + off + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + off + 0.28);
+        osc.connect(g);
+        g.connect(audioCtx.destination);
+        osc.start(now + off);
+        osc.stop(now + off + 0.3);
+      });
+      console.log('[audio] alarm fired');
+    } catch (e) {
+      console.error('[audio] play failed:', e);
+    }
+  }
+
+  let keepAlive = null;
+  function speak(text) {
+    if (!isVoiceEnabled || !('speechSynthesis' in window)) return;
+    try {
+      speechSynthesis.cancel();
+      clearInterval(keepAlive);
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'en-US';
+      u.onend = () => clearInterval(keepAlive);
+      speechSynthesis.speak(u);
+      keepAlive = setInterval(() => {
+        if (!speechSynthesis.speaking) { clearInterval(keepAlive); return; }
+        speechSynthesis.pause(); speechSynthesis.resume();
+      }, 4000);
+    } catch (e) {}
+  }
+
+  window.testAlarm = () => playAlarm();
+
+  // ===== Audio unlock (retries until running) =====
+  const tryUnlock = () => {
+    initAudio().then(ok => {
+      if (ok) {
+        document.removeEventListener('click', tryUnlock);
+        document.removeEventListener('keydown', tryUnlock);
+        document.removeEventListener('touchstart', tryUnlock);
+        console.log('[audio] unlocked on user gesture');
+      }
+    });
+  };
+  document.addEventListener('click', tryUnlock);
+  document.addEventListener('keydown', tryUnlock);
+  document.addEventListener('touchstart', tryUnlock);
+
+  // ===== Desktop notifications =====
   let isDesktopNotifEnabled = prefs.desktopNotif ?? false;
 
   function updateNotifBtn() {
@@ -284,7 +357,6 @@ const Store = {
   });
 
   updateNotifBtn();
-  // =============================================
 
   // ----- Helpers -----
   const getDateString = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -324,32 +396,6 @@ const Store = {
 
   function getBreakDuration() {
     return (sessionPomodoros > 0 && sessionPomodoros % longAfterCount === 0) ? longBreakSec : shortBreakSec;
-  }
-
-  // ----- Sound & voice -----
-  let audioCtx = null;
-  function ensureAudioContext() { try { if (!audioCtx) { const C = window.AudioContext || window.webkitAudioContext; if (C) audioCtx = new C(); } if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume(); } catch(e){} }
-  function playAlarm() {
-    if (!audioCtx) ensureAudioContext(); if (!audioCtx) return;
-    const now = audioCtx.currentTime;
-    [0,0.35,0.7].forEach(off => {
-      const osc = audioCtx.createOscillator(); const g = audioCtx.createGain();
-      osc.type='sine'; osc.frequency.value=880;
-      g.gain.setValueAtTime(0.0001, now+off);
-      g.gain.exponentialRampToValueAtTime(0.35, now+off+0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, now+off+0.28);
-      osc.connect(g).connect(audioCtx.destination);
-      osc.start(now+off); osc.stop(now+off+0.3);
-    });
-  }
-  let keepAlive = null;
-  function speak(text) {
-    if (!isVoiceEnabled || !('speechSynthesis' in window)) return;
-    speechSynthesis.cancel(); clearInterval(keepAlive);
-    const u = new SpeechSynthesisUtterance(text); u.lang='en-US';
-    u.onend = () => clearInterval(keepAlive);
-    speechSynthesis.speak(u);
-    keepAlive = setInterval(() => { if (!speechSynthesis.speaking) { clearInterval(keepAlive); return; } speechSynthesis.pause(); speechSynthesis.resume(); }, 4000);
   }
 
   // ----- Progress ring -----
@@ -392,13 +438,14 @@ const Store = {
     const title = wasWork ? 'Focus' : 'Break';
     const msg = wasWork ? "Time for a break!" : "Let's get back to work!";
     playAlarm();
-    speak(msg);
+    setTimeout(() => speak(msg), 1000);
     sendNotification(title, msg);
     startTimer();
   }
 
   function startTimer() {
-    stopTicking(); ensureAudioContext();
+    stopTicking();
+    initAudio();
     if (!timerEnd) {
       const total = (secondsLeft > 0 && secondsLeft <= (isWorkMode ? workDurationSec : getBreakDuration()))
         ? secondsLeft : (isWorkMode ? workDurationSec : getBreakDuration());
@@ -592,7 +639,6 @@ const Store = {
     }, 60 * 1000);
   });
 
-  // Break-start hook (real popup)
   window._qrOnBreakStart = function(breakSec, isLong) {
     ensurePopupState();
     const delayMs = (30 + Math.random() * 90) * 1000;
@@ -604,7 +650,6 @@ const Store = {
     }, delayMs);
   };
 
-  // Test popup listener (from tray or hotkey)
   listen('test-popup', () => {
     ensurePopupState();
     const dur = Math.min(30, computePopupDuration(15 * 60));
