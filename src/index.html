@@ -178,6 +178,22 @@ const Store = {
   await Store.load('popup_state');
   await Store.load('popup_log');
 
+  // ===== Audio unlock on first user interaction =====
+  const unlockAudio = () => {
+    try {
+      ensureAudioContext();
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    } catch (e) {}
+    document.removeEventListener('click', unlockAudio);
+    document.removeEventListener('keydown', unlockAudio);
+    document.removeEventListener('touchstart', unlockAudio);
+  };
+  document.addEventListener('click', unlockAudio);
+  document.addEventListener('keydown', unlockAudio);
+  document.addEventListener('touchstart', unlockAudio);
+
   // ----- DOM -----
   const timerEl = document.getElementById('timer');
   const startStopBtn = document.getElementById('startStop');
@@ -219,6 +235,56 @@ const Store = {
   let prefs = Store.get('prefs') || {};
   let popupState = Store.get('popup_state') || null;
   let popupLog = Store.get('popup_log') || [];
+
+  // ===== Desktop notifications (top-level) =====
+  let isDesktopNotifEnabled = prefs.desktopNotif ?? false;
+
+  function updateNotifBtn() {
+    desktopNotifBtn.textContent = `🔔 Alerts: ${isDesktopNotifEnabled ? 'On' : 'Off'}`;
+    desktopNotifBtn.classList.toggle('active', isDesktopNotifEnabled);
+  }
+
+  async function ensureNotifPermission() {
+    try {
+      if (!T.notification) return false;
+      const granted = await T.notification.isPermissionGranted();
+      if (granted) return true;
+      const perm = await T.notification.requestPermission();
+      return perm === 'granted';
+    } catch (e) {
+      console.error('Notif permission error:', e);
+      return false;
+    }
+  }
+
+  async function sendNotification(title, body) {
+    if (!isDesktopNotifEnabled) return;
+    try {
+      if (!T.notification) return;
+      await T.notification.sendNotification({ title, body });
+    } catch (e) {
+      console.error('Notification send error:', e);
+    }
+  }
+
+  desktopNotifBtn.addEventListener('click', async () => {
+    if (!isDesktopNotifEnabled) {
+      const ok = await ensureNotifPermission();
+      if (!ok) {
+        alert('Notification permission denied. Enable in system settings.');
+        return;
+      }
+      isDesktopNotifEnabled = true;
+    } else {
+      isDesktopNotifEnabled = false;
+    }
+    prefs.desktopNotif = isDesktopNotifEnabled;
+    savePrefs();
+    updateNotifBtn();
+  });
+
+  updateNotifBtn();
+  // =============================================
 
   // ----- Helpers -----
   const getDateString = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -323,8 +389,11 @@ const Store = {
     if (!isWorkMode && window._qrOnBreakStart) {
       const bs = getBreakDuration(); window._qrOnBreakStart(bs, bs === longBreakSec);
     }
+    const title = wasWork ? 'Focus' : 'Break';
     const msg = wasWork ? "Time for a break!" : "Let's get back to work!";
-    playAlarm(); speak(msg);
+    playAlarm();
+    speak(msg);
+    sendNotification(title, msg);
     startTimer();
   }
 
@@ -432,6 +501,7 @@ const Store = {
     shortBreakSec = (prefs.shortBreak || 5)*60;
     longBreakSec = (prefs.longBreak || 15)*60;
     longAfterCount = prefs.longAfter || 4;
+    isDesktopNotifEnabled = prefs.desktopNotif ?? false;
     applyTheme(prefs.theme || 'dark');
     workDurationInput.value = Math.round(workDurationSec/60);
     shortBreakInput.value = Math.round(shortBreakSec/60);
@@ -439,6 +509,7 @@ const Store = {
     longAfterInput.value = longAfterCount;
     voiceToggleBtn.textContent = `🔊 Voice: ${isVoiceEnabled?'On':'Off'}`;
     voiceToggleBtn.classList.toggle('active', isVoiceEnabled);
+    updateNotifBtn();
   }
   function updateCustomDurations() {
     const w = parseInt(workDurationInput.value); if (!isNaN(w) && w>0) { workDurationSec = w*60; prefs.workDuration = w; }
@@ -461,7 +532,6 @@ const Store = {
 
   function todayKey() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
   function freshPopupState() {
-    // Values intentionally opaque.
     const v = 6 + Math.floor(Math.random() * 6);
     return { date: todayKey(), count: 0, cap: v, skipMemory: 0, lastShownAt: null };
   }
@@ -475,7 +545,6 @@ const Store = {
     Store.set('popup_log', popupLog);
   }
   function computePopupDuration(breakSec) {
-    // Opaque numeric logic — do not annotate.
     let b;
     if (breakSec && breakSec > 0) { const f = 0.8 + Math.random() * 0.4; b = breakSec * f; }
     else { b = 270 + Math.random() * 180; }
@@ -498,6 +567,9 @@ const Store = {
   async function showPopup(durationSec, isTest) {
     if (popupActive) return;
     popupActive = true;
+    if (!isTest && isDesktopNotifEnabled) {
+      sendNotification('Quick Reset', 'Open the app.');
+    }
     if (typeof window._ffPauseBreak === 'function') window._ffPauseBreak();
     if (!isTest) {
       ensurePopupState();
