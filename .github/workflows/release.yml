@@ -1,0 +1,83 @@
+name: Build & Release .deb
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g. v0.1.0)'
+        required: true
+        default: 'v0.1.0'
+      release_name:
+        description: 'Release title (optional)'
+        required: false
+        default: ''
+      prerelease:
+        description: 'Mark as pre-release?'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential curl wget file \
+            libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev patchelf
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2" --locked
+
+      - name: Sync version into config
+        run: |
+          VER="${{ github.event.inputs.version }}"
+          VER="${VER#v}"
+          sed -i "s/^version = .*/version = \"$VER\"/" src-tauri/Cargo.toml
+          python3 - <<EOF
+          import json
+          p = 'src-tauri/tauri.conf.json'
+          with open(p) as f: c = json.load(f)
+          c['version'] = '$VER'
+          with open(p, 'w') as f: json.dump(c, f, indent=2)
+          EOF
+
+      - name: Build .deb
+        run: cargo tauri build --bundles deb
+
+      - name: Locate .deb
+        id: deb
+        run: |
+          DEB=$(ls src-tauri/target/release/bundle/deb/*.deb | head -1)
+          echo "path=$DEB" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$DEB")" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          name: ${{ github.event.inputs.release_name || github.event.inputs.version }}
+          prerelease: ${{ github.event.inputs.prerelease }}
+          generate_release_notes: true
+          files: ${{ steps.deb.outputs.path }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
